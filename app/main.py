@@ -86,9 +86,21 @@ async def websocket_generate(websocket: WebSocket, model: str = "llama3-8b-8192"
         temperature = data.get("temperature", 1)
         max_tokens = data.get("max_tokens", 1024)
         top_p = data.get("top_p", 1)
+        file_content = data.get("file", None) 
 
         if not messages:
             raise HTTPException(status_code=400, detail="Messages are required")
+        
+        # if file_content:
+        #     import base64
+        #     from io import StringIO
+            
+        #     try:
+        #         decoded_file = base64.b64decode(file_content).decode("utf-8")
+        #         file_lines = StringIO(decoded_file).readlines()
+        #         messages.append({"role": "user", "content": "File content processed: " + str(file_lines[:5])})
+        #     except Exception as file_error:
+        #         raise HTTPException(status_code=400, detail=f"Error processing file: {str(file_error)}")
 
         completion = client.chat.completions.create(
             model=model,
