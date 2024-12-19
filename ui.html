@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI WebSocket Streaming</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            white-space: pre-wrap; /* To maintain line breaks */
+            word-wrap: break-word;
+        }
+        #loading {
+            margin-top: 10px;
+            color: green;
+        }
+        input, button {
+            padding: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>FastAPI WebSocket Streaming</h1>
+    <p>Enter your query below and click the button to generate a response from the model.</p>
+
+    <!-- User Input for Query -->
+    <input type="text" id="userQuery" placeholder="Enter your query here" style="width: 100%; padding: 10px;">
+    <button onclick="startWebSocket()">Generate Response</button>
+
+    <!-- Loading Indicator -->
+    <div id="loading" style="display:none;">Loading...</div>
+
+    <!-- Response Display Area -->
+    <div id="response"></div>
+
+    <script>
+        let socket;
+
+        async function startWebSocket() {
+            // Get the user input query
+            const query = document.getElementById('userQuery').value.trim();
+
+            // Check if the user has entered a query
+            if (!query) {
+                alert("Please enter a query.");
+                return;
+            }
+
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('response').innerHTML = ''; // Clear previous response
+
+            // Open a WebSocket connection
+            socket = new WebSocket('ws://127.0.0.1:8000/ws/generate/');
+
+            socket.onopen = () => {
+                // Send the query to the FastAPI WebSocket endpoint
+                const requestPayload = {
+                    messages: [{"role": "user", "content": query}],
+                    temperature: 0.7,
+                    max_tokens: 4000,
+                    top_p: 1
+                };
+                socket.send(JSON.stringify(requestPayload));
+            };
+
+            socket.onmessage = (event) => {
+                // Append the received chunk of data to the response area
+                document.getElementById('response').innerText += event.data;
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                document.getElementById('response').innerText = "An error occurred: " + error.message;
+            };
+
+            socket.onclose = () => {
+                // Hide loading indicator once the WebSocket is closed
+                document.getElementById('loading').style.display = 'none';
+            };
+        }
+    </script>
+</body>
+</html>
