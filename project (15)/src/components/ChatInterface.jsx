@@ -4,9 +4,245 @@ import { ArrowLeft, Send, ChevronDown, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { materialDark,okaidia } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import { okaidia } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+// Message Bubble Component
+const MessageBubble = ({ message }) => {
+  const [processedContent, setProcessedContent] = useState(message.content);
+  const [codeOutput, setCodeOutput] = useState(null);
+  const isUser = message.type === 'user';
 
+  useEffect(() => {
+    const processMessageContent = async () => {
+      if (!message.isLoading && !isUser) {
+        const checkedContent = await executeCode(message.content);
+        setProcessedContent(message.content);
+        setCodeOutput(checkedContent);
+      }
+    };
 
+    processMessageContent();
+  }, [message.content, message.isLoading, isUser]);
+
+  const executeCode = async (content) => {
+    try {
+      const response = await fetch('http://localhost:8000/execute_code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Code execution failed');
+      }
+
+      const data = await response.json();
+      return data.output || data.error;
+    } catch (error) {
+      console.error('Error executing code:', error);
+      return 'Error executing code';
+    }
+  };
+
+  const processContent = (content) => {
+    if (!content) return content;
+    
+    const lines = content.split('\n');
+    let processedLines = [];
+    let inCodeBlock = false;
+    let codeBlock = [];
+    
+    for (let line of lines) {
+      if (line.trim() === '###') {
+        if (inCodeBlock) {
+          const code = codeBlock.join('\n');
+          processedLines.push('```python\n' + code + '\n```');
+          codeBlock = [];
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+        }
+        continue;
+      }
+      
+      if (inCodeBlock) {
+        const lineContent = line.startsWith('                ') 
+          ? line.slice(16) 
+          : line;
+        codeBlock.push(lineContent);
+      } else {
+        processedLines.push(line);
+      }
+    }
+    
+    return processedLines.join('\n');
+  };
+
+  const formatTimestamp = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div className={`flex ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start max-w-3xl`}>
+        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+          isUser ? 'bg-primary ml-2' : 'bg-gray-700 mr-2'
+        }`}>
+          {isUser ? <FaUser className="text-white text-sm" /> : <FaRobot className="text-white text-sm" />}
+        </div>
+        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+          <div className={`rounded-lg px-4 py-2 max-w-xl ${
+            isUser 
+              ? 'bg-primary text-white' 
+              : 'bg-gray-800 text-white'
+          }`}>
+            {message.isLoading ? (
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
+                <p className="whitespace-pre-wrap">Processing your request...</p>
+              </div>
+            ) : (
+              <>
+                <ReactMarkdown
+  remarkPlugins={[remarkGfm]}
+  className="prose prose-invert max-w-full"
+  components={{
+    // Code block handling
+    code({node, inline, className, children, ...props}) {
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : '';
+      
+      if (!inline && language) {
+        return (
+          <div className="my-4">
+            <SyntaxHighlighter
+              language={language}
+              style={okaidia}
+              PreTag="div"
+              className="rounded-md"
+              customStyle={{
+                margin: 0,
+                padding: '1rem',
+                backgroundColor: '#1e1e1e'
+              }}
+              {...props}
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          </div>
+        );
+      }
+      
+      return (
+        <code className={`${className} bg-gray-700 px-1 py-0.5 rounded`} {...props}>
+          {children}
+        </code>
+      );
+    },
+    // Enhanced table components
+    table({children}) {
+      return (
+        <div className="relative overflow-x-auto my-8 rounded-lg border border-gray-700 shadow-lg bg-gradient-to-b from-gray-800/50 to-gray-900/50">
+          <table className="w-full divide-y divide-gray-700 table-auto">
+            {children}
+          </table>
+        </div>
+      );
+    },
+    thead({children}) {
+      return (
+        <thead className="bg-gray-800/90 backdrop-blur-sm sticky top-0">
+          {children}
+        </thead>
+      );
+    },
+    tbody({children}) {
+      return (
+        <tbody className="divide-y divide-gray-700/50">
+          {children}
+        </tbody>
+      );
+    },
+    tr({children, isHeader}) {
+      return (
+        <tr className="transition-all duration-200 ease-in-out hover:bg-gray-800/50 hover:translate-x-1">
+          {children}
+        </tr>
+      );
+    },
+    th({children}) {
+      return (
+        <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-gray-300 uppercase tracking-wider">
+          <div className="flex items-center space-x-2">
+            {children}
+          </div>
+        </th>
+      );
+    },
+    td({children}) {
+      return (
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 transition-colors duration-200 hover:bg-gray-700/30">
+          <div className="flex items-center">
+            {children}
+          </div>
+        </td>
+      );
+    },
+    // Add styling for other markdown elements
+    p({children}) {
+      return <p className="text-gray-300 mb-4">{children}</p>;
+    },
+    strong({children}) {
+      return <strong className="font-semibold text-white">{children}</strong>;
+    },
+    h1({children}) {
+      return <h1 className="text-2xl font-bold text-white mb-4">{children}</h1>;
+    },
+    h2({children}) {
+      return <h2 className="text-xl font-bold text-white mb-3">{children}</h2>;
+    },
+    ul({children}) {
+      return <ul className="list-disc list-inside mb-4">{children}</ul>;
+    },
+    ol({children}) {
+      return <ol className="list-decimal list-inside mb-4">{children}</ol>;
+    },
+    li({children}) {
+      return <li className="text-gray-300 mb-1">{children}</li>;
+    },
+    blockquote({children}) {
+      return (
+        <blockquote className="border-l-4 border-gray-700 pl-4 italic text-gray-400 mb-4">
+          {children}
+        </blockquote>
+      );
+    }
+  }}
+>
+  {processContent(processedContent)}
+</ReactMarkdown>
+
+                {/* Code Output Section */}
+                
+              </>
+            )}
+          </div>
+          <span className="text-xs text-gray-500 mt-1">
+            {formatTimestamp(message.timestamp)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main ChatInterface Component
 const ChatInterface = () => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
@@ -20,7 +256,6 @@ const ChatInterface = () => {
   const chatContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const modelDropdownRef = useRef(null);
-  const wsRef = useRef(null);
 
   const aiModels = [
     {
@@ -65,49 +300,42 @@ const ChatInterface = () => {
     }
   }, [messages]);
 
-  useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, []);
+  // In your useEffect for initialization
+useEffect(() => {
+  const storedFileInfo = localStorage.getItem('fileInfo');
+  const storedModel = localStorage.getItem('selectedModel');
+  const initialQuery = localStorage.getItem('currentQuery');
 
-  useEffect(() => {
-    const storedFileInfo = localStorage.getItem('fileInfo');
-    const storedModel = localStorage.getItem('selectedModel');
-    const initialQuery = localStorage.getItem('currentQuery');
+  if (!storedFileInfo || !storedModel || !initialQuery) {
+    navigate('/');
+    return;
+  }
 
-    if (!storedFileInfo || !storedModel || !initialQuery) {
-      navigate('/');
-      return;
-    }
+  setFileInfo(JSON.parse(storedFileInfo));
+  setSelectedModel(storedModel);
 
-    setFileInfo(JSON.parse(storedFileInfo));
-    setSelectedModel(storedModel);
-
-    if (!isInitialized) {
-      setMessages([{
+  if (!isInitialized) {
+    setIsInitialized(true);
+    setMessages([
+      {
         type: 'user',
         content: initialQuery,
         timestamp: new Date().toISOString()
-      }]);
-      handleSendToBackend(initialQuery);
-      setIsInitialized(true);
-    }
-  }, [navigate, isInitialized]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target)) {
-        setIsModelDropdownOpen(false);
       }
-    };
+    ]);
+    // Send initial query to backend
+    handleSendToBackend(initialQuery);
+  }
+}, [navigate, isInitialized]);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+// Remove or modify any other useEffect that might be watching messages 
+// and triggering handleSendToBackend
+useEffect(() => {
+  if (messages.length > 0 && messages[messages.length - 1].type === 'assistant') {
+    scrollToBottom();
+  }
+}, [messages]);
+
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -143,96 +371,64 @@ const ChatInterface = () => {
     setIsModelDropdownOpen(false);
   };
 
-  const connectWebSocket = (message) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+  const handleSendToBackend = async (message) => {
+    setMessages(prev => [...prev, {
+      type: 'assistant',
+      content: 'Processing your request...',
+      timestamp: new Date().toISOString(),
+      isLoading: true
+    }]);
+    
+    setIsLoading(true);
+    try {
       const requestBody = {
         model: localStorage.getItem('selectedModel'),
         query: message,
         file: localStorage.getItem('fileContent'),
         fileName: localStorage.getItem('fileInfo')
       };
-      wsRef.current.send(JSON.stringify(requestBody));
-    } else {
-      const ws = new WebSocket('ws://127.0.0.1:8000/ws/generate/');
-      wsRef.current = ws;
 
-      ws.onopen = () => {
-        console.log('WebSocket connected successfully');
-        const requestBody = {
-          model: localStorage.getItem('selectedModel'),
-          query: message,
-          file: localStorage.getItem('fileContent'),
-          fileName: localStorage.getItem('fileInfo')
-        };
-        ws.send(JSON.stringify(requestBody));
-      };
+      const response = await fetch('http://localhost:8000/api/generate1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-      ws.onmessage = (event) => {
-        try {
-          const newContent = event.data;
-          setMessages(prev => {
-            const lastMessage = prev[prev.length - 1];
-            if (lastMessage && lastMessage.type === 'assistant') {
-              const updatedMessages = [...prev.slice(0, -1)];
-              updatedMessages.push({
-                ...lastMessage,
-                content: lastMessage.content + newContent,
-                isLoading: false
-              });
-              return updatedMessages;
-            } else {
-              return [...prev, {
-                type: 'assistant',
-                content: newContent,
-                timestamp: new Date().toISOString(),
-                isLoading: false
-              }];
-            }
-          });
-          setIsLoading(false);
-        } catch (error) {
-          console.error('Error handling WebSocket message:', error);
-          handleWebSocketError();
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const data = await response.json();
+      console.log(data);
+      setMessages(prev => prev.map((msg, index) => {
+        if (index === prev.length - 1 && msg.isLoading) {
+          return {
+            type: 'assistant',
+            content: data.response,
+            timestamp: new Date().toISOString(),
+            isLoading: false
+          };
         }
-      };
-
-      ws.onclose = (event) => {
-        console.log('WebSocket connection closed', event.code, event.reason);
-        handleWebSocketDisconnect(event);
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        handleWebSocketError();
-      };
-    }
-
-    setMessages(prev => [...prev, {
-      type: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      isLoading: true
-    }]);
-  };
-
-  const handleWebSocketError = () => {
-    setMessages(prev => prev.filter(msg => !msg.isLoading));
-    setIsLoading(false);
-  };
-
-  const handleWebSocketDisconnect = (event) => {
-    wsRef.current = null;
-    setIsLoading(false);
-    setMessages(prev => prev.filter(msg => !msg.isLoading));
-  };
-
-  const handleSendToBackend = async (message) => {
-    setIsLoading(true);
-    try {
-      connectWebSocket(message);
+        return msg;
+      }));
+      
     } catch (error) {
       console.error('Error:', error);
-      handleWebSocketError();
+      setMessages(prev => prev.map((msg, index) => {
+        if (index === prev.length - 1 && msg.isLoading) {
+          return {
+            type: 'assistant',
+            content: 'Sorry, there was an error processing your request.',
+            timestamp: new Date().toISOString(),
+            isLoading: false
+          };
+        }
+        return msg;
+      }));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -250,168 +446,19 @@ const ChatInterface = () => {
     setNewMessage('');
   };
 
-  const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-const MessageBubble = ({ message }) => {
-  const isUser = message.type === 'user';
-  
-  const processContent = (content) => {
-    console.log(content);
-    if (!content) return content;
-    
-    // Split content into lines
-    const lines = content.split('\n');
-    let processedLines = [];
-    let inCodeBlock = false;
-    let codeBlock = [];
-    
-    for (let line of lines) {
-      // Check for code block start/end
-      if (line.trim() === '###') {
-        if (inCodeBlock) {
-          // End of code block
-          const code = codeBlock.join('\n');
-          processedLines.push('```python\n' + code + '\n```');
-          codeBlock = [];
-          inCodeBlock = false;
-        } else {
-          // Start of code block
-          inCodeBlock = true;
-        }
-        continue;
-      }
-      
-      if (inCodeBlock) {
-        // Remove exactly 16 spaces from the beginning of each line if they exist
-        const lineContent = line.startsWith('                ') 
-          ? line.slice(16) 
-          : line;
-        codeBlock.push(lineContent);
-      } else {
-        processedLines.push(line);
-      }
-    }
-    
-    return processedLines.join('\n');
-  };
-  
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`flex ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start max-w-3xl`}>
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-          isUser ? 'bg-primary ml-2' : 'bg-gray-700 mr-2'
-        }`}>
-          {isUser ? <FaUser className="text-white text-sm" /> : <FaRobot className="text-white text-sm" />}
-        </div>
-        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-          <div className={`rounded-lg px-4 py-2 max-w-xl ${
-            isUser 
-              ? 'bg-primary text-white' 
-              : 'bg-gray-800 text-white'
-          }`}>
-            {message.isLoading ? (
-              <p className="whitespace-pre-wrap">Analyzing...</p>
-            ) : (
-              <ReactMarkdown
-                className="prose prose-invert max-w-none"
-                components={{
-                  code({node, inline, className, children, ...props}) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const language = match ? match[1] : '';
-                    
-                    if (!inline && language) {
-                      return (
-                        <div className="my-4">
-                          <SyntaxHighlighter
-                            language={language}
-                            style={okaidia}
-                            PreTag="div"
-                            className="rounded-md"
-                            customStyle={{
-                              margin: 0,
-                              padding: '1rem',
-                              backgroundColor: '#1e1e1e'
-                            }}
-                            {...props}
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        </div>
-                      );
-                    }
-                    
-                    return (
-                      <code className={`${className} bg-gray-700 px-1 py-0.5 rounded`} {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-                }}
-              >
-                {processContent(message.content)}
-              </ReactMarkdown>
-              
-            )}
-            {/* {!isUser && (
-          <React.Fragment>
-              {message.content && setTimeout(() => {
-              fetch('http://localhost:8000/execute_code', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ code: message.content })
-              })
-              .then(response => response.json())
-              .then(data => console.log(data))
-              .catch(error => console.error(error));
-            }, 0)}
-              
-            </React.Fragment>
-            )}*/}
-          </div> 
-          <span className="text-xs text-gray-500 mt-1">\
-
-            {formatTimestamp(message.timestamp)}
-          </span>
-          </div>
-        </div>
-        
-      </div>
-      
-      
-    
-    
-  );
-};
-
-// useEffect(() => {
-//   const button = document.getElementById('run-code-button');
-//   if (button && message.content) {
-//     button.click();
-//   }
-// }, [message]);
-
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-6xl mx-auto p-4">
           <div className="flex items-center justify-between">
-          <button
+            <button
               onClick={handleNewChat}
               className="flex items-center space-x-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
             >
               <Plus className="h-5 w-5" />
               <span>New Chat</span>
             </button>
-
-            
 
             <div className="flex items-center space-x-3">
               <div className="relative flex items-center bg-gray-900 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-700 transition-colors"
@@ -480,7 +527,7 @@ const MessageBubble = ({ message }) => {
         </div>
       </div>
 
-      {/* Fixed Footer */}
+      {/* Footer */}
       <div className="bg-gray-800 border-t border-gray-700 w-full">
         <div className="max-w-6xl mx-auto p-4">
           <form onSubmit={handleSendMessage} className="flex items-center space-x-4">
@@ -506,7 +553,7 @@ const MessageBubble = ({ message }) => {
         </div>
       </div>
     </div>
-    );
-  };
-  
-  export default ChatInterface;
+  );
+};
+
+export default ChatInterface;

@@ -155,7 +155,7 @@ const AnalysisPage = () => {
     }
     
     localStorage.setItem('currentQuery', inputValue);
-    navigate('/chatpage');
+    navigate('/chatpage', { state: { query: inputValue } });
   };
 
   const FilePreview = ({ fileInfo }) => {

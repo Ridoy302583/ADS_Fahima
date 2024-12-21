@@ -6,7 +6,7 @@ import Features from './components/Features';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
 import AnalysisPage from './components/AnalysisPage';
-import Chatpage from './components/ChatInterface';
+import Chatpage from './components/ChatbotInterface';
 
 function App() {
   return (

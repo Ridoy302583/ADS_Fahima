@@ -17,7 +17,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-api_key = os.getenv("API_KEY")
+api_key = "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"
 if not api_key:
     raise ValueError("API Key is required but not found.")
 client = Groq(api_key=api_key)
@@ -258,146 +258,113 @@ def clean_code_block(code_block):
     # Join lines back together
     fresh_result = '\n'.join(lines).strip()
     return fresh_result
-@app.websocket("/ws/generate/")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    
+from fastapi.responses import StreamingResponse
+from interpreter import interpreter
+@app.get("/chat")
+def chat_endpoint(message: str):
+    def event_stream():
+        for result in interpreter.chat(message, stream=True):
+            yield f"data: {result}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+@app.post("/api/generate")
+async def generate(request: GenerateRequest):
     try:
-        while True:
-            # Receive and parse the message
-            data = await websocket.receive_text()
-            request_data = json.loads(data)
-            model = request_data.get('model')
-            query=request_data.get('query') # Returns None if key doesn't exist
-            file=request_data.get('file') # Returns None if key doesn't exist
-            filename_str = request_data.get('fileName', '') 
-            file_info = json.loads(filename_str)
-            filename=file_info.get('name', '')
-            print(model,query,filename)
-            if file and filename:
-                saved_path = save_file_with_timestamp(file, filename)
-                if saved_path:
-                    print(f"File stored at: {saved_path}")
-                else:
-                    print("Failed to save file")
-            # logger.info(f"Received request: {request_data}")
-            # print(saved_path)
-            # Validate the request data
+        # Parse the file information if provided
+        file_info = json.loads(request.fileName) if request.fileName else {}
+        filename = file_info.get('name', '')
+        saved_path = None
+
+        # Save file if provided
+        if request.file and filename:
+            saved_path = save_file_with_timestamp(request.file, filename)
+            if not saved_path:
+                raise HTTPException(status_code=400, detail="Failed to save file")
+            logger.info(f"File stored at: {saved_path}")
+
+        # Process the file if it exists
+        df = None
+        if saved_path:
             file_extension = os.path.splitext(saved_path)[1].lower()
-            print(file_extension)
             if file_extension == '.csv':
-                df= pd.read_csv(saved_path)
-            elif file_extension in ['.xlsx', '.xls','.xlsx']:
-                df= pd.read_excel(saved_path)
-            # df = pd.read_csv(file_path)
-            print(df)
+                df = pd.read_csv(saved_path)
+            elif file_extension in ['.xlsx', '.xls']:
+                df = pd.read_excel(saved_path)
+
             num_rows, num_columns = df.shape
             column_names = df.columns.tolist()
             df_final = df.head(10)
-            
-            # Get current date
-            today_date = datetime.now().strftime("%d-%m-%Y")
-            
-            # Create system prompt
-            system_prompt = f"""
-            You are an Expert Python developer . Your role is to write python code using Dataframe and users questions. You just write python code, not included any text in your reponse.
-            Today is {today_date}.You are provided with a pandas dataframe location is df={saved_path} with {num_rows} rows and {num_columns} columns.This is the columns name: {column_names}. This is the first 10 data from dataset: {df_final}.
-            When asked about the data, your response should include a python code that describes the dataframe `df` and provide response for users question about data. Do not include any comment in your code.
-            Using the provided dataframe, df, return the python code. Output possible type is (possible values "string", "number", "dataframe", "plot"). You should to return output like this conversasional way in your code, You must provide conversational response while you provide output in your code. in your code start add prefix "# Start" and when end add "# End", Must use start of the code backstrick ```python and end of the code ``` . All text you write must within code. Without code do not write any text in your response.
-            load the dataset like this format.
-            df = pd.read_csv(r'{saved_path}')
-            When asked about image,chart,graph image related that will be stored in a seperate folder name "images" in the same directory as the code but the name of the images will be unique name ,do not open directly the images.
-            Exampple-1:
-                ```python
-                import pandas as pd 
-                df = pd.read_excel(r'uploads\ALL Information Data_20241220_211355.xlsx') 
-                print("Hello, I have loaded the dataset. It has", len(df.columns), "columns and", len(df), "rows.") 
-                print("The columns are:", df.columns.tolist()) 
-                print("The first 10 rows of the dataset are:") 
-                print(df.head(10))
-                ```
-                
-            Example-2:
-                ```python
-                #Start
-                import pandas as pd 
-                df = pd.read_excel(r'uploads\ALL Information Data_20241220_211719.xlsx') 
-                print("Hello, I have loaded the dataset. It has", len(df.columns), "columns and", len(df), "rows.")
-                ```
-            """
-            
-            # Initialize Groq client
-            client = Groq(api_key=api_key)
-            
-            # Get completion
-            completion = client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": query,
-                    }
-                ],
-                temperature=0,
-                max_tokens=1024,
-                top_p=1,
-                stream=True,
-                stop=None,
-            )
-            
-            # Initialize result string
-            result = ""
-            
-            # Process streaming response
-            for chunk in completion:
-                content = chunk.choices[0].delta.content or ""
-                print(content, end="")
-                result += content
-                # Send each chunk immediately to the frontend
-                await websocket.send_text(content)
-            fresh_result = clean_code_block(result)
-            # print(fresh_result)
-            # Execute the code
-            output = None
-            error_message = None
-            try:
-                # Redirect stdout to capture print output
-                output_capture = io.StringIO()
-                sys.stdout = output_capture
+        else:
+            raise HTTPException(status_code=400, detail="No file provided")
 
-                # Execute the code
-                exec(fresh_result)
+        # Create system prompt
+        today_date = datetime.now().strftime("%d-%m-%Y")
+        system_prompt = f"""
+        You are an Expert Python developer. Your role is to write python code using Dataframe and users questions. You just write python code, not included any text in your reponse.
+        Today is {today_date}. You are provided with a pandas dataframe location is df={saved_path} with {num_rows} rows and {num_columns} columns. This is the columns name: {column_names}. This is the first 10 data from dataset: {df_final}.
+        When asked about the data, your response should include a python code that describes the dataframe `df` and provide response for users question about data. Do not include any comment in your code.
+        Using the provided dataframe, df, return the python code. Output possible type is (possible values "string", "number", "dataframe", "plot"). You should to return output like this conversasional way in your code, You must provide conversational response while you provide output in your code. in your code start add prefix "# Start" and when end add "# End", Must use start of the code backstrick ```python and end of the code use this backtricks ```. All text you write must within code. Without code do not write any text in your response, Within your code all text you must write a way that after executing it will be markdown formated.
+        load the dataset like this format:
+        df = pd.read_csv(r'{saved_path}')
+        When asked about image,chart,graph image related that will be stored in a seperate folder name "images" in the same directory as the code but the name of the images will be unique name, do not open directly the images.
+        Here is the Example:
+        Example-01:
+        ```python
+        # Start
+        import pandas as pd
+        df = pd.read_excel(r'uploads\ALL Information Data_20241221_141905.xlsx')
+        print("Hello, the dataframe has been loaded successfully.")
+        print("**The dataframe has", len(df), "rows and", len(df.columns), "columns.**")
+        print("**-The columns of the dataframe are:", list(df.columns)**)
+        print("-The output type is: string")
+        # End
+        ```
+        Example-02:
+        ```python
+        # Start
+        import pandas as pd
+        df = pd.read_excel(r'uploads\ALL Information Data_20241221_142116.xlsx')
+        print("Hello, the dataframe has been loaded successfully.")
+        print("The dataframe has", len(df), "rows and", len(df.columns), "columns.")
+        print("The columns of the dataframe are:", list(df.columns))
+        bangladesh_count = df['Country'].value_counts()['Bangladesh'] if 'Bangladesh' in df['Country'].value_counts() else 0
+        if bangladesh_count > 0:
+            print("Bangladesh is present in the dataframe.")
+        else:
+            print("Bangladesh is not present in the dataframe.")
+        print("The output type is: string.")
+        # End 
+        ```
+        """
 
-                # Capture the output
-                output = output_capture.getvalue()
+        # Get completion from Groq
+        completion = client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": request.query,
+                }
+            ],
+            temperature=0,
+            max_tokens=1024,
+            top_p=1,
+            stream=False,  # Changed to False since we're not streaming
+            stop=None,
+        )
 
-            except Exception as e:
-                # Capture the error message
-                error_message = str(e)
+        # Get the complete response
+        response = completion.choices[0].message.content
 
-            finally:
-                # Reset stdout to its original state
-                sys.stdout = sys.__stdout__
+        return {"response": response}
 
-            # Send output or error message back to frontend
-            if error_message:
-                print(error_message)
-                await websocket.send_text("Error123:"+error_message)
-            else:
-                await websocket.send_text("Output123:"+output)
-            
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        logger.info("WebSocket client disconnected")
     except Exception as e:
-        logger.error(f"Error processing WebSocket message: {str(e)}")
-        error_message = json.dumps({"error": "Internal server error", "details": str(e)})
-        await manager.send_message(error_message, websocket)
-        manager.disconnect(websocket)
+        logger.error(f"Error processing request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/execute_code")
 async def execute_code(request: Request):
@@ -409,7 +376,7 @@ async def execute_code(request: Request):
     code = await request.json()
     print(code)
     # Clean the code block
-    fresh_result = clean_code_block(code["code"])
+    fresh_result = clean_code_block(code["content"])
     print(fresh_result)
     # Execute the code
     output = None
