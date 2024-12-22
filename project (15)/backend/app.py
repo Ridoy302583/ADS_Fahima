@@ -13,6 +13,7 @@ from langchain_experimental.agents import create_pandas_dataframe_agent
 from langchain_groq import ChatGroq 
 # Create FastAPI instance
 from groq import Groq
+from fastapi.staticfiles import StaticFiles
 app = FastAPI()
 
 # Add CORS middleware
@@ -23,7 +24,11 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+if not os.path.exists("images"):
+    os.makedirs("images")
 
+# Mount the images directory AFTER CORS middleware
+app.mount("/images", StaticFiles(directory="images", check_dir=False), name="images")
 # Define request model
 class ChatRequest(BaseModel):
     query: str
