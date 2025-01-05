@@ -8,41 +8,41 @@ const AnalysisPage = () => {
   const [inputValue, setInputValue] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
   const [placeholderText, setPlaceholderText] = useState('');
-  const [selectedModel, setSelectedModel] = useState('claude-3-sonnet');
+  const [selectedModel, setSelectedModel] = useState('llama-3.2-90b-vision-preview');
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const fileInputRef = useRef(null);
   const dropdownRef = useRef(null);
   
   const aiModels = [
     {
-      id: 'claude-3-sonnet',
-      name: 'Claude 3 Sonnet',
+      id: 'llama-3.2-90b-vision-preview',
+      name: 'llama-3.2-90b-vision-preview',
       description: 'Balanced performance for most tasks',
-      provider: 'Anthropic'
+      provider: 'Meta'
     },
     {
-      id: 'gpt-4',
-      name: 'GPT-4',
+      id: 'llama-3.1-70b-versatile',
+      name: 'llama-3.1-70b-versatile',
       description: 'Advanced reasoning and analysis',
-      provider: 'OpenAI'
+      provider: 'Meta'
     },
     {
-      id: 'llama-3',
-      name: 'Llama 3',
+      id: 'llama-3.3-70b-versatile',
+      name: 'llama-3.3-70b-versatile',
       description: 'Open source, locally deployable',
       provider: 'Meta'
     },
     {
-      id: 'claude-3-opus',
-      name: 'Claude 3 Opus',
+      id: 'gemma2-9b-it',
+      name: 'gemma2-9b-it',
       description: 'Highest capability model',
-      provider: 'Anthropic'
+      provider: 'Google'
     },
     {
-      id: 'gemini-pro',
-      name: 'Gemini Pro',
+      id: 'mixtral-8x7b-32768',
+      name: 'mixtral-8x7b-32768',
       description: 'Multimodal understanding',
-      provider: 'Google'
+      provider: 'Mistral AI'
     }
   ];
 

@@ -25,14 +25,14 @@ const ChatMessage = ({ message, isBot }) => (
 
 const ChatbotHeader = () => {
   const fileInfo = JSON.parse(localStorage.getItem('fileInfo') || '{}');
-  const selectedModelId = localStorage.getItem('selectedModel') || 'claude-3-sonnet';
+  const selectedModelId = localStorage.getItem('selectedModel') || 'llama-3.2-90b-vision-preview';
 
   const modelNames = {
-    'claude-3-sonnet': 'Claude 3 Sonnet',
-    'gpt-4': 'GPT-4',
-    'llama-3': 'Llama 3',
-    'claude-3-opus': 'Claude 3 Opus',
-    'gemini-pro': 'Gemini Pro'
+    'llama-3.1-70b-versatile': 'llama-3.1-70b-versatile',
+    'llama-3.2-90b-vision-preview': 'llama-3.2-90b-vision-preview',
+    'llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
+    'gemma2-9b-it': 'gemma2-9b-it',
+    'mixtral-8x7b-32768': 'mixtral-8x7b-32768'
   };
 
   return (
@@ -83,7 +83,7 @@ const ChatbotInterface = () => {
 
   const handleApiCall = async (query) => {
     const fileContent = localStorage.getItem('fileContent');
-    const selectedModel = localStorage.getItem('selectedModel') || 'claude-3-sonnet';
+    const selectedModel = localStorage.getItem('selectedModel') || 'llama-3.2-90b-vision-preview';
     const fileInfo = JSON.parse(localStorage.getItem('fileInfo') || '{}');  
 
     try {
@@ -109,7 +109,6 @@ const ChatbotInterface = () => {
 
       // Process content and format tables
       const processContent = (htmlContent) => {
-        // Convert HTML tables to markdown format
         const tableRegex = /<table[\s\S]*?<\/table>/g;
         const tables = htmlContent.match(tableRegex) || [];
         
@@ -120,18 +119,15 @@ const ChatbotInterface = () => {
           tempDiv.innerHTML = tableHtml;
           const table = tempDiv.querySelector('table');
           
-          // Create markdown table
           let mdTable = '\n';
           const rows = table.querySelectorAll('tr');
           
-          // Process headers
           const headerCells = rows[0].querySelectorAll('th');
           if (headerCells.length) {
             mdTable += '| ' + Array.from(headerCells).map(cell => cell.textContent.trim()).join(' | ') + ' |\n';
             mdTable += '|' + Array(headerCells.length).fill('---:|').join('') + '\n';
           }
           
-          // Process data rows
           Array.from(rows).forEach((row, idx) => {
             if (idx === 0 && headerCells.length) return;
             const cells = row.querySelectorAll('td, th');
@@ -149,12 +145,12 @@ const ChatbotInterface = () => {
       // Custom components for ReactMarkdown with comprehensive styling
       const components = {
         table: ({node, ...props}) => (
-            <div className="relative mb-6 mt-4 w-[calc(100vw-160px)] max-w-[1200px] overflow-x-auto shadow-md sm:rounded-lg border border-gray-700 bg-gray-800">
-              <div className="min-w-full">
-                <table className="min-w-full divide-y divide-gray-700 text-white table-fixed" {...props} />
-              </div>
+          <div className="relative mb-6 mt-4 w-[calc(100vw-160px)] max-w-[1200px] overflow-x-auto shadow-md sm:rounded-lg border border-gray-700 bg-gray-800">
+            <div className="min-w-full">
+              <table className="min-w-full divide-y divide-gray-700 text-white table-fixed" {...props} />
             </div>
-          ),
+          </div>
+        ),
         thead: ({node, ...props}) => (
           <thead className="bg-gray-700 sticky top-0 z-10 text-gray-300" {...props} />
         ),
@@ -165,16 +161,10 @@ const ChatbotInterface = () => {
           <tr className="hover:bg-gray-600 transition-colors duration-200 ease-in-out" {...props} />
         ),
         th: ({node, ...props}) => (
-          <th 
-            className="px-6 py-4 text-sm font-semibold uppercase tracking-wider text-left whitespace-nowrap text-gray-300"
-            {...props}
-          />
+          <th className="px-6 py-4 text-sm font-semibold uppercase tracking-wider text-left whitespace-nowrap text-gray-300" {...props} />
         ),
         td: ({node, ...props}) => (
-          <td 
-            className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap"
-            {...props}
-          />
+          <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap" {...props} />
         ),
         p: ({node, ...props}) => (
           <p className="text-gray-300 mb-4 leading-relaxed" {...props} />
@@ -207,27 +197,32 @@ const ChatbotInterface = () => {
             </pre>
         ),
         blockquote: ({node, ...props}) => (
-          <blockquote 
-            className="border-l-4 border-gray-600 pl-4 italic text-gray-400 my-4" 
-            {...props}
-          />
+          <blockquote className="border-l-4 border-gray-600 pl-4 italic text-gray-400 my-4" {...props} />
         ),
         a: ({node, ...props}) => (
-          <a 
-            className="text-blue-400 hover:text-blue-300 underline" 
-            target="_blank"
-            rel="noopener noreferrer"
-            {...props}
-          />
+          <a className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer" {...props} />
         ),
         hr: ({node, ...props}) => (
           <hr className="border-gray-700 my-6" {...props} />
         ),
       };
 
-      // Create message content with styling
+      // Create message content with styling, now including results
       let messageContent = (
         <div className="w-[calc(100vw-160px)] max-w-[1200px] break-words">
+          {/* Display results if they exist */}
+          {data.result && (
+            <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800">
+              <h3 className="text-lg font-semibold text-gray-200 mb-3">Analysis Code for your Query:</h3>
+              <pre className="bg-gray-900 p-4 rounded-lg overflow-x-auto text-gray-200 text-sm font-mono">
+                {typeof data.result === 'object' 
+                  ? JSON.stringify(data.result, null, 2)
+                  : data.result}
+              </pre>
+            </div>
+          )}
+
+          {/* Main response content */}
           <div className="prose prose-invert max-w-none">
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
@@ -238,6 +233,7 @@ const ChatbotInterface = () => {
             </ReactMarkdown>
           </div>
           
+          {/* Display images if they exist */}
           {data.images && data.images.length > 0 && (
             <div className="mt-6 space-y-6">
               {data.images.map((image, index) => (
@@ -256,7 +252,6 @@ const ChatbotInterface = () => {
             </div>
           )}
         </div>
-    
       );
 
       setMessages(prev => [...prev, { 
@@ -272,6 +267,7 @@ const ChatbotInterface = () => {
       }]);
     }
   };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;

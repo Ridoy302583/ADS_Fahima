@@ -126,9 +126,38 @@ def clean_code_block(code_block):
     # Join lines back together
     fresh_result = '\n'.join(lines).strip()
     return fresh_result
+async def send_response(response):
+    return response
 @app.post("/api/analyze")
 async def generate_response(request: ChatRequest):
+    saved_path = None
     try:
+        # Clean up existing files in uploads and images folders at the start
+        uploads_dir = "uploads"
+        images_dir = "images"
+
+        # Clean uploads folder
+        if os.path.exists(uploads_dir):
+            for file in os.listdir(uploads_dir):
+                file_path = os.path.join(uploads_dir, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        print(f"Deleted existing upload file: {file_path}")
+                except Exception as e:
+                    print(f"Error deleting upload file {file_path}: {e}")
+
+        # Clean images folder
+        if os.path.exists(images_dir):
+            for file in os.listdir(images_dir):
+                file_path = os.path.join(images_dir, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        print(f"Deleted existing image file: {file_path}")
+                except Exception as e:
+                    print(f"Error deleting image file {file_path}: {e}")
+
         query = request.query
         model_name = request.selectedModel
         file_content = request.fileContent
@@ -160,102 +189,103 @@ async def generate_response(request: ChatRequest):
         else:
             raise HTTPException(status_code=400, detail="No file provided")
 
-        system_prompt = f"""
-        You are an Expert Python developer . Your role is to write python code using Dataframe and users questions. You just write python code, not included any text in your reponse.
-        Today is {today_date}.You are provided with a pandas dataframe location is df={saved_path} with {num_rows} rows and {num_columns} columns.This is the columns name: {column_names}. This is the first 10 data from dataset: {df_final}.
-        When asked about the data, your response should include a python code that describes the dataframe `df` and provide response for users question about data. Do not include any comment in your code.
-        Using the provided dataframe, df, return the python code. Output possible type is (possible values "string", "number", "dataframe", "plot"). You should to return output like this conversasional way in your code, You must provide conversational response while you provide output in your code. in your code start add prefix "# Start" and when end add "# End", Do not include asterisk (```python,```) within your code,Must not use asterisk ((```python,```)) in your code. All text you write must within code. Without code do not write any text in your response. When you provide Table in your response you must provide table format in your code. When need to provide images like graphs ,charts etc you must provide it in images folder , not open directly.
-        load the dataset like this format.
-        df = pd.read_csv(r'{saved_path}')
-        Example-1:
-        # Start
-        import pandas as pd 
-        df = pd.read_excel(r'uploads\ALL Information Data_20241220_214931.xlsx') 
-        print("Hello, I have loaded the dataset. It has", len(df.columns), "columns and", len(df), "rows.")
-        print("The columns are:", df.columns.tolist()) 
-        print("The first 10 rows of the dataset are:") 
-        print(df.head(10))
-        # End
-        Example-2:
-        # Start
-        import pandas as pd 
-        df = pd.read_excel(r'uploads\ALL Information Data_20241220_215458.xlsx') 
-        print("Hello, I have loaded the dataset. It has", len(df.columns), "columns and", len(df), "rows.")
-        print("The number of unique countries in the dataset is:", len(df['Country'].unique))
-        # End
-        Must Provide Response in a conversational manner. When you provide about dataframe you try to provide within table format provide table using .to_html() code.When you need to generate graph or charts images then you store that in a folder which name is 'images', Do not directly open the graph or charts etc.
-        """
-        
-        client = Groq(api_key="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")
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": query,
-                }
-            ],
-            temperature=0,
-            max_tokens=1024,
-            top_p=1,
-            stream=True,
-            stop=None,
-        )
-        
-        result = ""
-        for chunk in completion:
-            content = chunk.choices[0].delta.content or ""
-            print(content, end="")
-            result += content
-        print(result)
-        fresh_result = clean_code_block(result)
-        print(fresh_result)
-        
-        # Execute the code
-        output = None
-        error_message = None
-        generated_images = []
-        try:
-            output_capture = io.StringIO()
-            sys.stdout = output_capture
-            exec(fresh_result)
-            output = output_capture.getvalue()
-        
+        async def process_with_groq(current_query):
+            system_prompt = f"""
+            You are an Expert Python developer who is experience in data analysis . Your role is to write python code using Dataframe and users questions. You just write python code, not included any text in your reponse.
+            Today is {today_date}.You are provided with a pandas dataframe location is df={saved_path} with {num_rows} rows and {num_columns} columns.This is the columns name: {column_names}. This is the first 10 data from dataset: {df_final}.
+            When asked about the data, your response should include a python code that describes the dataframe `df` and provide response for users question about data. Do not include any comment in your code.
+            Using the provided dataframe, df, return the python code. Output possible type is (possible values "string", "number", "dataframe", "plot"). You should to return output like this conversasional way in your code, You must provide conversational response while you provide output in your code. in your code start add prefix "# Start" and when end add "# End", Do not include asterisk (```python,```) within your code,Must not use asterisk ((```python,```)) in your code. All text you write must within code. Without code do not write any text in your response. When you provide Table in your response you must provide table format in your code. When need to provide images like graphs ,charts etc you must provide it in images folder , not open directly.
+            load the dataset like this format.
+            df = pd.read_csv(r'{saved_path}')
+            You Provide exact answer in your response. Like when asked 'how many data in here' , You just simply write that part code, Not include like this 'I have loaded dataset' etc etc. You Just provide exact answer. Not include any others without the users query.
+            When need to response provide dataframe that must include .to_html() in your code. You must include dataframe format in your code instead of list and use .to_html() in your code. You provide your response for after execution it will be markdown rendered so that output will be beautify. After every line you used newline statement blackslash n and use (.).
+            When need to create a ML Model that model must save within models folder with the model name with query related name.
+            ULTRA IMPORTANT: After every line of print statement you must used newline statement blackslash n and use (.). Must use '\n' in your code every line of print statement.
+            ULTRA IMPORTANT: You must Provide exact answer in your response. Like when asked 'how many data in here' , You just simply write that part code, Not include like this 'I have loaded dataset' etc etc. You Just provide exact answer. Not include any others without the users query.
+            """
             
-        except Exception as e:
-            error_message = str(e)
-        finally:
-            sys.stdout = sys.__stdout__
-        images_dir = "images"
+            client = Groq(api_key="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")
+            
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": current_query,
+                    }
+                ],
+                temperature=0,
+                max_tokens=1024,
+                top_p=1,
+                stream=True,
+                stop=None,
+            )
+            
+            result = ""
+            for chunk in completion:
+                content = chunk.choices[0].delta.content or ""
+                print(content, end="")
+                result += content
+                
+            return result
+
+        # Initial attempt with original query
+        result = await process_with_groq(query)
+        fresh_result = clean_code_block(result)
+        
+        max_retries = 10
+        retry_count = 0
+        execution_successful = False
+        
+        while retry_count < max_retries:
+            try:
+                output_capture = io.StringIO()
+                sys.stdout = output_capture
+                exec(fresh_result)
+                output = output_capture.getvalue()
+                execution_successful = True
+                break  # If successful, exit the loop
+                
+            except Exception as e:
+                error_message = str(e)
+                retry_count += 1
+                
+                if retry_count < max_retries:
+                    # Create a new query incorporating the error message
+                    error_query = f"Fix this Python code error: {error_message}.Here is the Previous generated code{fresh_result}. User Original Query is: {query}. Please fix the error and try again."
+                    result = await process_with_groq(error_query)
+                    fresh_result = clean_code_block(result)
+                else:
+                    output = f"Final error after {max_retries} attempts: {error_message}"
+                    
+            finally:
+                sys.stdout = sys.__stdout__
+
+        # Handle generated images
+        generated_images = []
         if os.path.exists(images_dir):
-            # Get list of image files sorted by creation time (newest first)
-            print( images_dir )
             image_files = [f for f in os.listdir(images_dir) 
                             if f.lower().endswith(('.png'))]
-            print(image_files)
             image_files.sort(key=lambda x: os.path.getctime(os.path.join(images_dir, x)), 
                             reverse=True)
-            print(image_files)
-            # Get the most recent images
-            for image_file in image_files[:5]:  # Limit to 5 most recent images
+            
+            for image_file in image_files[:5]:
                 image_path = os.path.join(images_dir, image_file)
-                print(image_path)
-                # Only include images created in the last few seconds
-                
                 generated_images.append({
                     "name": image_file,
                     "url": f"http://localhost:8000/images/{image_file}"
                 })
-        print(output)
-        print(generated_images)
+
         response = {
-            "response": output if output else error_message,
-            "images": generated_images  # Include image URLs
+            "response": output,
+            "images": generated_images,
+            "result": result,
+            "retry_count": retry_count,
+            "success": execution_successful
         }
         
         return response
