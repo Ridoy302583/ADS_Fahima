@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pandas
+langchain-experimental
+langchain-groq
+groq
+pydantic
